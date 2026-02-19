@@ -36,7 +36,7 @@ jobs:
       - name: Install buildozer and Cython
         run: |
           pip install --upgrade pip
-          pip install buildozer cython
+          pip install buildozer "cython<3.0"
 
       # ── 5. Кэш ~/.buildozer ─────────────────────────────────────────
       - name: Cache Buildozer directory

@@ -17,17 +17,11 @@ android.permissions = INTERNET
 android.api = 33
 android.minapi = 26
 android.ndk = 25b
-android.sdk = 33
 android.ndk_api = 26
+android.build_tools_version = 33.0.2
 
 android.archs = arm64-v8a
-
-# Иконка и заставка (опционально — положи файлы рядом)
-# icon.filename = %(source.dir)s/icon.png
-# presplash.filename = %(source.dir)s/presplash.png
-
 android.allow_backup = True
-android.manifest.intent_filters =
 
 log_level = 2
 warn_on_root = 1

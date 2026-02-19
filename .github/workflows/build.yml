@@ -47,13 +47,36 @@ jobs:
           restore-keys: |
             buildozer-${{ runner.os }}-
 
-      # ── 6. Сборка APK ────────────────────────────────────────────────
+      # ── 6. Принять лицензии Android SDK заранее ─────────────────────
+      # Buildozer скачивает SDK сам, поэтому создаём файлы лицензий вручную.
+      # Без этого шага build-tools 37-rc1 (preview) блокирует сборку.
+      - name: Pre-accept Android SDK licenses
+        run: |
+          LICENSES_DIR="$HOME/.buildozer/android/platform/android-sdk/licenses"
+          mkdir -p "$LICENSES_DIR"
+
+          # android-sdk-license
+          printf "\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e" \
+            > "$LICENSES_DIR/android-sdk-license"
+
+          # android-sdk-preview-license  ← именно этой не хватало
+          printf "\n84831b9409646a918e30573bab4c9c91346d8abd\n504667f4c0de7af1a06de9f4b1727b84351f2910" \
+            > "$LICENSES_DIR/android-sdk-preview-license"
+
+          # intel-android-extra-license
+          printf "\nd975f751698a77b662f1254ddbeed3901e976f5a" \
+            > "$LICENSES_DIR/intel-android-extra-license"
+
+          echo "Licenses directory:"
+          ls -la "$LICENSES_DIR"
+
+      # ── 7. Сборка APK ────────────────────────────────────────────────
       - name: Build APK (debug)
         run: buildozer android debug
         env:
           JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
 
-      # ── 7. Публикация артефакта ──────────────────────────────────────
+      # ── 8. Публикация артефакта ──────────────────────────────────────
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:

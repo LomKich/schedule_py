@@ -1,0 +1,63 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:   # Запуск вручную из GitHub UI
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-22.04
+
+    steps:
+      # ── 1. Код ───────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Python ────────────────────────────────────────────────────
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      # ── 3. Зависимости системы ───────────────────────────────────────
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            git zip unzip openjdk-17-jdk \
+            autoconf libtool pkg-config zlib1g-dev \
+            libncurses5-dev libncursesw5-dev libtinfo6 \
+            cmake libffi-dev libssl-dev \
+            python3-pip
+
+      # ── 4. Buildozer + Cython ────────────────────────────────────────
+      - name: Install buildozer and Cython
+        run: |
+          pip install --upgrade pip
+          pip install buildozer cython
+
+      # ── 5. Android SDK / NDK кэш ────────────────────────────────────
+      - name: Cache Android SDK/NDK
+        uses: actions/cache@v4
+        with:
+          path: ~/.buildozer
+          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            buildozer-${{ runner.os }}-
+
+      # ── 6. Сборка APK ────────────────────────────────────────────────
+      - name: Build APK (debug)
+        run: buildozer android debug
+        env:
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+
+      # ── 7. Публикация артефакта ──────────────────────────────────────
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: schedule-android-apk
+          path: bin/*.apk
+          retention-days: 30
+          if-no-files-found: error

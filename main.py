@@ -1,9 +1,6 @@
 """
 Расписание колледжа — Android
-
-Порядок запуска:
-  1. start_proxy() — стартует HTTP-прокси и БЛОКИРУЕТСЯ пока не ответит на /ping
-  2. Только после этого создаётся WebView и загружается HTML
+Загружает index.html напрямую через file:// — как открытие файла в браузере.
 """
 
 import os
@@ -32,11 +29,10 @@ if platform == 'android':
     Color           = autoclass('android.graphics.Color')
 
     class AndroidWebView(Widget):
-        def __init__(self, html, **kwargs):
+        def __init__(self, file_url, **kwargs):
             super().__init__(**kwargs)
-            self.html = html
-            self._wv  = None
-            # Небольшая задержка — даём потоку прокси прогреться
+            self.file_url = file_url
+            self._wv = None
             Clock.schedule_once(lambda dt: self._create(), 0.3)
 
         @run_on_ui_thread
@@ -48,31 +44,24 @@ if platform == 'android':
             s = wv.getSettings()
             s.setJavaScriptEnabled(True)
             s.setDomStorageEnabled(True)
+            # Эти три разрешают fetch() из file:// к http://127.0.0.1
+            s.setAllowFileAccess(True)
             s.setAllowFileAccessFromFileURLs(True)
             s.setAllowUniversalAccessFromFileURLs(True)
-            s.setAllowFileAccess(True)
-            s.setMixedContentMode(0)       # MIXED_CONTENT_ALWAYS_ALLOW
+            # Разрешаем HTTP внутри file:// контекста
+            s.setMixedContentMode(0)   # MIXED_CONTENT_ALWAYS_ALLOW
             s.setLoadsImagesAutomatically(True)
-            # Полное отключение зума
+            # Зум отключён
             s.setSupportZoom(False)
             s.setBuiltInZoomControls(False)
             s.setDisplayZoomControls(False)
-            s.setUseWideViewPort(True)
-            s.setLoadWithOverviewMode(True)
 
             wv.setWebViewClient(WebViewClient())
             wv.setWebChromeClient(WebChromeClient())
             wv.setBackgroundColor(Color.parseColor('#0d0d0d'))
 
-            # Загружаем HTML как строку с base http://localhost/
-            # → fetch('http://127.0.0.1:8765/...') работает без CORS блокировок
-            wv.loadDataWithBaseURL(
-                'http://localhost/',
-                self.html,
-                'text/html',
-                'UTF-8',
-                None
-            )
+            # Грузим как обычный файл — точно так же как браузер открывает HTML
+            wv.loadUrl(self.file_url)
 
             layout = LinearLayout(activity)
             layout.setOrientation(LinearLayout.VERTICAL)
@@ -95,7 +84,7 @@ else:
     from kivy.uix.label import Label
 
     class AndroidWebView(Widget):
-        def __init__(self, html, **kwargs):
+        def __init__(self, file_url, **kwargs):
             super().__init__(**kwargs)
             self.add_widget(Label(
                 text='[b]Desktop mode[/b]\nОткрой assets/index.html в браузере',
@@ -106,13 +95,13 @@ else:
 class ScheduleApp(App):
 
     def build(self):
-        # Запускаем прокси и ЖДЁМ пока он не начнёт отвечать
+        # Запускаем прокси и ждём готовности
         proxy_server.start_proxy()
 
-        with open(HTML_FILE, encoding='utf-8') as f:
-            html = f.read()
+        # Получаем реальный путь к файлу на устройстве
+        file_url = f'file://{HTML_FILE}'
 
-        self.webview = AndroidWebView(html=html)
+        self.webview = AndroidWebView(file_url=file_url)
         return self.webview
 
     def on_back_button(self):

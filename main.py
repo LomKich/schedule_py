@@ -1,14 +1,14 @@
 """
-Главный модуль приложения «Расписание колледжа» для Android.
+Расписание колледжа — Android
 
 Архитектура:
-  1. Запускаем локальный прокси-сервер (proxy_server.py) на 127.0.0.1:8765
-  2. Открываем нативный Android WebView с index.html из assets/
-  3. HTML уже настроен использовать http://127.0.0.1:8765/proxy/ — нет CORS
+  1. Запускаем локальный прокси-сервер на 127.0.0.1:8765
+  2. Читаем index.html как строку
+  3. Загружаем через loadDataWithBaseURL с base = http://localhost/
+     → JS внутри может делать fetch() к http://127.0.0.1:8765 без ограничений
 """
 
 import os
-import sys
 
 from kivy.app import App
 from kivy.uix.widget import Widget
@@ -17,38 +17,29 @@ from kivy.utils import platform
 
 import proxy_server
 
-
-# ── Путь к assets ────────────────────────────────────────────────
-def get_assets_path():
-    if platform == 'android':
-        # На Android assets копируются рядом с main.py
-        return os.path.join(os.path.dirname(__file__), 'assets')
-    # Десктоп / разработка
-    return os.path.join(os.path.dirname(__file__), 'assets')
+# ── Путь к index.html ────────────────────────────────────────────
+ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets')
+HTML_FILE   = os.path.join(ASSETS_DIR, 'index.html')
 
 
-HTML_PATH = os.path.join(get_assets_path(), 'index.html')
-
-
-# ── Android WebView через pyjnius ─────────────────────────────────
+# ── Android WebView ───────────────────────────────────────────────
 if platform == 'android':
     from android.runnable import run_on_ui_thread
-    from jnius import autoclass, cast
+    from jnius import autoclass
 
-    PythonActivity = autoclass('org.kivy.android.PythonActivity')
-    WebView        = autoclass('android.webkit.WebView')
-    WebViewClient  = autoclass('android.webkit.WebViewClient')
-    WebChromeClient= autoclass('android.webkit.WebChromeClient')
-    LinearLayout   = autoclass('android.widget.LinearLayout')
-    LayoutParams   = autoclass('android.view.ViewGroup$LayoutParams')
-    View           = autoclass('android.view.View')
-    Color          = autoclass('android.graphics.Color')
+    PythonActivity  = autoclass('org.kivy.android.PythonActivity')
+    WebView         = autoclass('android.webkit.WebView')
+    WebViewClient   = autoclass('android.webkit.WebViewClient')
+    WebChromeClient = autoclass('android.webkit.WebChromeClient')
+    LinearLayout    = autoclass('android.widget.LinearLayout')
+    LayoutParams    = autoclass('android.view.ViewGroup$LayoutParams')
+    Color           = autoclass('android.graphics.Color')
 
     class AndroidWebView(Widget):
-        def __init__(self, url, **kwargs):
+        def __init__(self, html, **kwargs):
             super().__init__(**kwargs)
-            self.url = url
-            self._wv = None
+            self.html = html
+            self._wv  = None
             Clock.schedule_once(lambda dt: self._create(), 0)
 
         @run_on_ui_thread
@@ -57,23 +48,33 @@ if platform == 'android':
             wv = WebView(activity)
             self._wv = wv
 
-            # Настройки
-            settings = wv.getSettings()
-            settings.setJavaScriptEnabled(True)
-            settings.setDomStorageEnabled(True)
-            settings.setAllowFileAccessFromFileURLs(True)
-            settings.setAllowUniversalAccessFromFileURLs(True)
-            settings.setAllowFileAccess(True)
-            settings.setLoadsImagesAutomatically(True)
-            settings.setSupportZoom(False)
-            settings.setBuiltInZoomControls(False)
-            settings.setDisplayZoomControls(False)
+            s = wv.getSettings()
+            s.setJavaScriptEnabled(True)
+            s.setDomStorageEnabled(True)
+            # Разрешаем fetch() из file/data URL к http://
+            s.setAllowFileAccessFromFileURLs(True)
+            s.setAllowUniversalAccessFromFileURLs(True)
+            s.setAllowFileAccess(True)
+            s.setMixedContentMode(0)   # MIXED_CONTENT_ALWAYS_ALLOW
+            s.setLoadsImagesAutomatically(True)
+            s.setSupportZoom(False)
+            s.setBuiltInZoomControls(False)
+            s.setDisplayZoomControls(False)
 
             wv.setWebViewClient(WebViewClient())
             wv.setWebChromeClient(WebChromeClient())
             wv.setBackgroundColor(Color.parseColor('#0d0d0d'))
 
-            # Встраиваем WebView как оверлей поверх Kivy surface
+            # Загружаем HTML как строку с base http://localhost/
+            # → fetch('http://127.0.0.1:8765/...') работает без блокировок
+            wv.loadDataWithBaseURL(
+                'http://localhost/',   # baseUrl
+                self.html,            # data
+                'text/html',          # mimeType
+                'UTF-8',              # encoding
+                None                  # historyUrl
+            )
+
             layout = LinearLayout(activity)
             layout.setOrientation(LinearLayout.VERTICAL)
             params = LayoutParams(
@@ -82,9 +83,7 @@ if platform == 'android':
             )
             layout.setLayoutParams(params)
             layout.addView(wv, params)
-
             activity.addContentView(layout, params)
-            wv.loadUrl(self.url)
 
         @run_on_ui_thread
         def on_back(self):
@@ -94,35 +93,34 @@ if platform == 'android':
             return False
 
 else:
-    # ── Десктоп-заглушка (для разработки) ───────────────────────
+    # ── Десктоп-заглушка ─────────────────────────────────────────
     from kivy.uix.label import Label
 
     class AndroidWebView(Widget):
-        def __init__(self, url, **kwargs):
+        def __init__(self, html, **kwargs):
             super().__init__(**kwargs)
             self.add_widget(Label(
-                text=f'[b]Desktop mode[/b]\nOpen in browser:\n{url}',
+                text='[b]Desktop mode[/b]\nОткрой assets/index.html в браузере',
                 markup=True,
                 halign='center'
             ))
 
 
-# ── Kivy App ─────────────────────────────────────────────────────
+# ── App ───────────────────────────────────────────────────────────
 class ScheduleApp(App):
 
     def build(self):
-        # Запускаем локальный прокси до создания WebView
         proxy_server.start_proxy()
 
-        url = f'file://{HTML_PATH}'
-        self.webview = AndroidWebView(url=url)
+        with open(HTML_FILE, encoding='utf-8') as f:
+            html = f.read()
+
+        self.webview = AndroidWebView(html=html)
         return self.webview
 
     def on_back_button(self):
-        """Перехватываем кнопку «Назад» — передаём WebView."""
         if platform == 'android':
-            if self.webview.on_back():
-                return True
+            return self.webview.on_back()
         return False
 
 

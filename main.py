@@ -40,7 +40,7 @@ if platform == 'android':
             super().__init__(**kwargs)
             self.html = html
             self._wv  = None
-            Clock.schedule_once(lambda dt: self._create(), 0)
+            Clock.schedule_once(lambda dt: self._create(), 0.5)
 
         @run_on_ui_thread
         def _create(self):

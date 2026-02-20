@@ -1,28 +1,36 @@
 """
 Локальный прокси-сервер для Яндекс Диска.
-Запускается в фоновом потоке на порту 8765.
-Заменяет Cloudflare Worker — нет CORS проблем, нет внешних зависимостей.
+Использует requests (как старая версия приложения) — проверено на Android в России.
 """
 
 import threading
-import urllib.request
-import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from urllib.parse import unquote
 
-
-ALLOWED_DOMAINS = (
-    'https://cloud-api.yandex.net',
-    'https://downloader.disk.yandex.ru',
-)
+import requests
 
 PORT = 8765
+
+# Разрешаем все поддомены Яндекса — Яндекс использует разные домены для редиректов
+ALLOWED_PREFIXES = (
+    'https://cloud-api.yandex.net',
+    'https://downloader.disk.yandex.ru',
+    'https://getfile.disk.yandex.net',
+    'https://disk.yandex.ru',
+    'https://yastatic.net',
+)
+
+SESSION = requests.Session()
+SESSION.headers.update({
+    'User-Agent': 'Mozilla/5.0 (compatible; ScheduleBot/1.0)',
+    'Accept': '*/*',
+})
 
 
 class ProxyHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
-        # Отключаем лишние логи
-        pass
+        pass  # отключаем лишние логи
 
     def do_OPTIONS(self):
         self.send_response(200)
@@ -30,41 +38,33 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        # /proxy/<encoded_url>
         if not self.path.startswith('/proxy/'):
-            self.send_error(404, 'Not found')
+            self.send_error(404)
             return
 
-        raw = self.path[len('/proxy/'):]
-        # Может быть query string после закодированного URL — берём только path часть
-        target = urllib.parse.unquote(raw)
+        target = unquote(self.path[len('/proxy/'):])
 
-        # Проверяем домен
-        if not any(target.startswith(d) for d in ALLOWED_DOMAINS):
+        if not any(target.startswith(p) for p in ALLOWED_PREFIXES):
             self.send_error(403, 'Forbidden domain')
             return
 
         try:
-            req = urllib.request.Request(
-                target,
-                headers={
-                    'User-Agent': 'Mozilla/5.0 (compatible; ScheduleBot/1.0)',
-                    'Accept': '*/*',
-                }
-            )
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                data = resp.read()
-                ct = resp.headers.get('Content-Type', 'application/octet-stream')
+            resp = SESSION.get(target, timeout=60, allow_redirects=True)
 
-                self.send_response(200)
-                self.send_header('Content-Type', ct)
-                self.send_header('Content-Length', str(len(data)))
-                self._cors()
-                self.end_headers()
-                self.wfile.write(data)
+            data = resp.content
+            ct   = resp.headers.get('Content-Type', 'application/octet-stream')
 
-        except urllib.error.HTTPError as e:
-            self.send_error(e.code, str(e.reason))
+            self.send_response(resp.status_code)
+            self.send_header('Content-Type', ct)
+            self.send_header('Content-Length', str(len(data)))
+            self._cors()
+            self.end_headers()
+            self.wfile.write(data)
+
+        except requests.exceptions.ConnectionError as e:
+            self.send_error(502, f'Connection error: {e}')
+        except requests.exceptions.Timeout:
+            self.send_error(504, 'Timeout')
         except Exception as e:
             self.send_error(502, f'Proxy error: {e}')
 
@@ -74,7 +74,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
 
 def start_proxy():
-    """Запустить сервер в фоновом потоке. Вызвать один раз при старте приложения."""
+    """Запустить сервер в фоновом потоке."""
     server = HTTPServer(('127.0.0.1', PORT), ProxyHandler)
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
@@ -82,8 +82,8 @@ def start_proxy():
 
 
 if __name__ == '__main__':
-    print(f'Proxy listening on http://127.0.0.1:{PORT}/proxy/')
-    start_proxy()
     import time
+    print(f'Proxy on http://127.0.0.1:{PORT}/proxy/')
+    start_proxy()
     while True:
         time.sleep(1)

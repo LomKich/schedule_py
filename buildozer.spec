@@ -8,7 +8,7 @@ source.include_exts = py,html,js,css,png,jpg,ttf,woff2,json
 source.include_patterns = assets/*
 
 version = 1.0
-requirements = python3,kivy==2.3.0,pyjnius
+requirements = python3,kivy==2.3.0,pyjnius,requests,certifi
 
 orientation = portrait
 fullscreen = 0

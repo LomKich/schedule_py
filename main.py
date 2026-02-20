@@ -1,6 +1,10 @@
 """
 Расписание колледжа — Android
-Загружает index.html напрямую через file:// — как открытие файла в браузере.
+
+Архитектура:
+  1. server.py запускает HTTP-сервер на 127.0.0.1:8766
+  2. Сервер отдаёт index.html И проксирует Яндекс Диск
+  3. WebView открывает http://127.0.0.1:8766/ — всё same-origin, нет CORS
 """
 
 import os
@@ -10,10 +14,7 @@ from kivy.uix.widget import Widget
 from kivy.clock import Clock
 from kivy.utils import platform
 
-import proxy_server
-
-ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets')
-HTML_FILE   = os.path.join(ASSETS_DIR, 'index.html')
+import server   # <- единый сервер вместо отдельного proxy_server
 
 
 if platform == 'android':
@@ -29,11 +30,11 @@ if platform == 'android':
     Color           = autoclass('android.graphics.Color')
 
     class AndroidWebView(Widget):
-        def __init__(self, file_url, **kwargs):
+        def __init__(self, url, **kwargs):
             super().__init__(**kwargs)
-            self.file_url = file_url
+            self.url = url
             self._wv = None
-            Clock.schedule_once(lambda dt: self._create(), 0.3)
+            Clock.schedule_once(lambda dt: self._create(), 0)
 
         @run_on_ui_thread
         def _create(self):
@@ -44,12 +45,6 @@ if platform == 'android':
             s = wv.getSettings()
             s.setJavaScriptEnabled(True)
             s.setDomStorageEnabled(True)
-            # Эти три разрешают fetch() из file:// к http://127.0.0.1
-            s.setAllowFileAccess(True)
-            s.setAllowFileAccessFromFileURLs(True)
-            s.setAllowUniversalAccessFromFileURLs(True)
-            # Разрешаем HTTP внутри file:// контекста
-            s.setMixedContentMode(0)   # MIXED_CONTENT_ALWAYS_ALLOW
             s.setLoadsImagesAutomatically(True)
             # Зум отключён
             s.setSupportZoom(False)
@@ -60,8 +55,8 @@ if platform == 'android':
             wv.setWebChromeClient(WebChromeClient())
             wv.setBackgroundColor(Color.parseColor('#0d0d0d'))
 
-            # Грузим как обычный файл — точно так же как браузер открывает HTML
-            wv.loadUrl(self.file_url)
+            # Загружаем по HTTP — никаких file://, никаких CORS
+            wv.loadUrl(self.url)
 
             layout = LinearLayout(activity)
             layout.setOrientation(LinearLayout.VERTICAL)
@@ -84,10 +79,10 @@ else:
     from kivy.uix.label import Label
 
     class AndroidWebView(Widget):
-        def __init__(self, file_url, **kwargs):
+        def __init__(self, url, **kwargs):
             super().__init__(**kwargs)
             self.add_widget(Label(
-                text='[b]Desktop mode[/b]\nОткрой assets/index.html в браузере',
+                text='[b]Desktop mode[/b]\nОткрой в браузере:\n' + url,
                 markup=True, halign='center'
             ))
 
@@ -95,13 +90,9 @@ else:
 class ScheduleApp(App):
 
     def build(self):
-        # Запускаем прокси и ждём готовности
-        proxy_server.start_proxy()
-
-        # Получаем реальный путь к файлу на устройстве
-        file_url = f'file://{HTML_FILE}'
-
-        self.webview = AndroidWebView(file_url=file_url)
+        # Стартуем сервер и ждём пока он не ответит
+        url = server.start_server()
+        self.webview = AndroidWebView(url=url)
         return self.webview
 
     def on_back_button(self):

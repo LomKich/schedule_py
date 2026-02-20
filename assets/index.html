@@ -433,7 +433,7 @@ function parseDoc(ab,group){
 }
 
 // ══ ЯНДЕКС ДИСК ══
-const PROXIES=['http://127.0.0.1:8765/proxy/'];
+const PROXIES=['/proxy/'];
 let activeProxy='';let proxyFound=false;
 async function yadGet(path,params){
   const qs=new URLSearchParams(params).toString();

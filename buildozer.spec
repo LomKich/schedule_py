@@ -22,13 +22,9 @@ android.build_tools_version = 33.0.2
 android.archs = arm64-v8a
 android.allow_backup = True
 
-# Разрешаем HTTP на localhost (нужно для прокси 127.0.0.1:8765)
-android.manifest.application_attrs = android:usesCleartextTraffic="true"
-
-# Иконка и сплэш (раскомментируй и положи файлы рядом с main.py)
+android.presplash_color = #0d0d0d
 # icon.filename = %(source.dir)s/icon.png
 # presplash.filename = %(source.dir)s/presplash.png
-android.presplash_color = #0d0d0d
 
 log_level = 2
 warn_on_root = 1
